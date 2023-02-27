@@ -78,7 +78,7 @@ class GCPBatchExecutor(Executor):
 
         # Default task options.
         self.default_task_options: Dict[str, Any] = {
-            "mount_path": config.get("mount_path", fallback="/mnt/share"),
+            "mount_path": config.get("mount_path", fallback="/mnt/disks/share"),
             "machine_type": config.get("machine_type", fallback="e2-standard-4"),
             "vcpus": config.getint("vcpus", fallback=2),
             "memory": config.getint("memory", fallback=16),
@@ -280,9 +280,21 @@ class GCPBatchExecutor(Executor):
                 job,
                 task_command,
                 exit_command="exit 1",
+                split_command=True
             )
+
+            script_command['stage'] = (
+                "mkdir -p workspace && "
+                "cd workspace && "
+                f"{script_command['stage']} && "
+                """echo \"\"\"{script_command['run']}\"\"\" > run.sh && """
+                "chmod +x run.sh"
+                )
+            script_command['run'] = ['run.sh']
+            script_command['unstage'] = quote_command(script_command['unstage'])
+
             # GCP Batch takes script as a string and requires quoting of -c argument
-            script_command[-1] = shlex.join(shlex.split(script_command[-1]))
+            #script_command[-1] = shlex.join(shlex.split(script_command[-1]))
             gcp_job = gcp_utils.batch_submit(
                 client=self.gcp_client,
                 job_name=f"redun-{job.id}",

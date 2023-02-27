@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import Dict, Iterable, List, Tuple, Union
 
+from google.api_core.gapic_v1 import client_info
 from google.cloud import batch_v1
 
 
@@ -20,7 +21,8 @@ class MinCPUPlatform(Enum):
 def get_gcp_client(
     sync: bool = True,
 ) -> Union[batch_v1.BatchServiceClient, batch_v1.BatchServiceAsyncClient]:
-    return batch_v1.BatchServiceClient() if sync else batch_v1.BatchServiceAsyncClient()
+    c_info = client_info.ClientInfo(user_agent='redun')
+    return batch_v1.BatchServiceClient(client_info=c_info) if sync else batch_v1.BatchServiceAsyncClient(client_info=c_info)
 
 
 def batch_submit(
@@ -58,13 +60,28 @@ def batch_submit(
         # runnable.script.path is mutually exclusive.
         # runnable.script.path = '/tmp/test.sh'
     else:
+        # Setup
+        setup_runnable = batch_v1.Runnable()
+        setup_runnable.script = batch_v1.Runnable.Script()
+        setup_runnable.script.text = commands['stage']
+
+        # Run Job
         runnable.container = batch_v1.Runnable.Container()
         runnable.container.image_uri = image
-        runnable.container.entrypoint = entrypoint
-        runnable.container.commands = commands
+        runnable.container.entrypoint = "/bin/bash"
+        runnable.container.commands = ["run.sh"] #commands['run']
+        runnable.container.volumes = ['/workspace:/workspace']
+        runnable.container.options = '-w /workspace'
+
+        # Teardown
+        teardown_runnable = batch_v1.Runnable()
+        teardown_runnable.always_run=True
+        teardown_runnable.script = batch_v1.Runnable.Script()
+        teardown_runnable.script.text = commands['unstage']
+
 
     task = batch_v1.TaskSpec()
-    task.runnables = [runnable]
+    task.runnables = [setup_runnable, runnable, teardown_runnable]
 
     # We can specify what resources are requested by each task.
     resources = batch_v1.ComputeResource()
@@ -125,7 +142,6 @@ def batch_submit(
     create_request.job_id = job_name
     # The job's parent is the region in which the job will run
     create_request.parent = f"projects/{project}/locations/{region}"
-
     return client.create_job(create_request)
 
 

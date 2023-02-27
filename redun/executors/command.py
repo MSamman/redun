@@ -100,6 +100,7 @@ def get_script_task_command(
     job: Job,
     command: str,
     exit_command: str = "",
+    split_command: bool = False
 ) -> List[str]:
     """
     Returns a shell script to run a script task.
@@ -117,26 +118,36 @@ def get_script_task_command(
     error_unstage = File(error_path).stage(".task_error").render_unstage()
     status_unstage = get_filesystem(url=status_path).shell_copy(None, status_path)
 
-    return [
-        "bash",
-        "-c",
-        "-o",
-        "pipefail",
-        f"""
-{input_stage}
-chmod +x .task_command
-(
-  ./.task_command \
-  2> >(tee .task_error >&2) | tee .task_output
-) && (
-    {output_unstage}
-    {error_unstage}
-    echo ok | {status_unstage}
-) || (
-    [ -f .task_output ] && {output_unstage}
-    [ -f .task_error ] && {error_unstage}
-    echo fail | {status_unstage}
-    {exit_command}
-)
-""",
-    ]
+    # The command is structured as:
+    # 1. Bash invocation
+    # 2. stage inputs
+    # 3. run command
+    # 4. unstage outputs / handle_errors
+    command = {
+        'stage': input_stage,
+        'run_prefix': ["bash", "-c", "-o", "pipefail"],
+        'run': """chmod +x .task_command
+                  (
+                  ./.task_command \
+                  2> >(tee .task_error >&2) | tee .task_output
+                  )""",
+        'unstage': f"""(
+        {output_unstage}
+        {error_unstage}
+        echo ok | {status_unstage}
+        ) || (
+        [ -f .task_output ] && {output_unstage}
+        [ -f .task_error ] && {error_unstage}
+        echo fail | {status_unstage}
+        {exit_command}
+        )"""
+    }
+
+    if split_command:
+        return command
+    else:
+        combined_command = f"""
+            {command['stage']}
+            {command['run']} || {command['unstage']}"""
+        return command['run_prefix'] + [combined_command]
+
