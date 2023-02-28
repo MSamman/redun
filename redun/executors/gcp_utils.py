@@ -69,7 +69,7 @@ def batch_submit(
         runnable.container = batch_v1.Runnable.Container()
         runnable.container.image_uri = image
         runnable.container.entrypoint = "/bin/bash"
-        runnable.container.commands = ["run.sh"] #commands['run']
+        runnable.container.commands = [".run_batch"]
         runnable.container.volumes = ['/workspace:/workspace']
         runnable.container.options = '-w /workspace'
 

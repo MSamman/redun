@@ -274,7 +274,18 @@ class GCPBatchExecutor(Executor):
                 **task_options,
             )
         else:
-            task_command = get_task_command(job.task, args, kwargs)
+            task_command = get_task_command(job.task, args, kwargs).splitlines()
+            begin_staging = task_command.index('# BEGIN_STAGING_INPUTS')
+            end_staging = task_command.index('# END_STAGING_INPUTS')
+            stage_inputs = '\n'.join(task_command[begin_staging:end_staging+1])
+            task_command = task_command[:begin_staging] + task_command[end_staging+1:]
+
+            begin_unstaging = task_command.index('# BEGIN_UNSTAGING_OUTPUTS')
+            end_unstaging = task_command.index('# END_UNSTAGING_OUTPUTS')
+            unstage_outputs = '\n'.join(task_command[begin_unstaging:end_unstaging+1])
+            task_command = task_command[:begin_unstaging] + task_command[end_unstaging+1:]
+            task_command = '\n'.join(task_command)
+
             script_command = get_script_task_command(
                 self.gcs_scratch_prefix,
                 job,
@@ -282,16 +293,19 @@ class GCPBatchExecutor(Executor):
                 exit_command="exit 1",
                 split_command=True
             )
-
+            #input.render_stage() for input in iter_nested_value(inputs)
             script_command['stage'] = (
                 "mkdir -p workspace && "
-                "cd workspace && "
+                "cd workspace;"
+                f"\n{stage_inputs};\n"
                 f"{script_command['stage']} && "
-                """echo \"\"\"{script_command['run']}\"\"\" > run.sh && """
-                "chmod +x run.sh"
+                f"""echo \"\"\"{script_command['run']}\"\"\" > .run_batch && """
+                "chmod +x .run_batch"
                 )
             script_command['run'] = ['run.sh']
-            script_command['unstage'] = quote_command(script_command['unstage'])
+            script_command['unstage'] = (
+                f"cd workspace; {unstage_outputs}\n{script_command['unstage']}"
+            )
 
             # GCP Batch takes script as a string and requires quoting of -c argument
             #script_command[-1] = shlex.join(shlex.split(script_command[-1]))

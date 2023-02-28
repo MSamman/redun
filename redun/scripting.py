@@ -229,14 +229,19 @@ def script(
         temp_path = None
 
     # Stage inputs.
+    command_parts.extend(['# BEGIN_STAGING_INPUTS'])
     command_parts.extend(input.render_stage() for input in iter_nested_value(inputs))
+    command_parts.extend(['# END_STAGING_INPUTS'])
 
     # User command.
     command_parts.append(get_wrapped_command(prepare_command(command)))
 
     # Unstage outputs.
     file_stages = [value for value in iter_nested_value(outputs) if isinstance(value, Staging)]
+
+    command_parts.extend(['# BEGIN_UNSTAGING_OUTPUTS'])
     command_parts.extend(file_stage.render_unstage() for file_stage in file_stages)
+    command_parts.extend(['# END_UNSTAGING_OUTPUTS'])
 
     full_command = "\n".join(command_parts)
 
